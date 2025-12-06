@@ -1,0 +1,6 @@
+<odoo>
+    <record id="scraper_key_data" model="scraper.key">
+        <field name="keyword_input"></field>
+        <field name="is_scraped">False</field>
+    </record>
+</odoo>

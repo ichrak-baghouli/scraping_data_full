@@ -1,0 +1,24 @@
+<odoo>
+    <record id="view_scraper_send_to_mailing_wizard_form" model="ir.ui.view">
+        <field name="name">scraper.send.to.mailing.wizard.form</field>
+        <field name="model">scraper.send.to.mailing.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Envoyer à Email Marketing">
+                <group>
+                    <field name="mailing_list_id"/>
+                </group>
+                <footer>
+                    <button string="Envoyer" type="object" name="action_send" class="btn-primary"/>
+                    <button string="Annuler" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_scraper_send_to_mailing_wizard" model="ir.actions.act_window">
+        <field name="name">Envoyer à Email Marketing</field>
+        <field name="res_model">scraper.send.to.mailing.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>

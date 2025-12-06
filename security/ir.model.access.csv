@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_scraper_key,Scraper Key,model_scraper_key,base.group_system,1,1,1,1
+access_scraper_contact,Scraper Contact,model_scraper_contact,base.group_system,1,1,1,1
+scraping_data_full.access_scraping_cleanup,access_scraping_cleanup,scraping_data_full.model_scraping_cleanup,base.group_user,1,1,1,1
+access_scraper_send_to_mailing_wizard,Access Scraper Send To Mailing Wizard,model_scraper_send_to_mailing_wizard,base.group_user,1,1,1,1

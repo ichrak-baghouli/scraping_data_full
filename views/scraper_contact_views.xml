@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Vue liste -->
+    <record id="view_scraping_result_tree" model="ir.ui.view">
+        <field name="name">scraper.contact.list</field>
+        <field name="model">scraper.contact</field>
+        <field name="arch" type="xml">
+            <list>
+
+                <field name="name"/>
+                <field name="email"/>
+                <field name="phone"/>
+                <field name="keyword"/>
+                <field name="date_scraping"/>
+                <field name="source"/>
+            </list>
+        </field>
+    </record>
+
+
+    <!-- Action -->
+    <record id="action_scraping_result" model="ir.actions.act_window">
+        <field name="name">Résultats de scraping</field>
+        <field name="res_model">scraper.contact</field>
+        <field name="view_mode">list,form,pivot,graph</field>
+    </record>
+
+
+    <record id="action_send_to_mailing" model="ir.actions.act_window">
+        <field name="name">Envoyer à Email Marketing</field>
+        <field name="res_model">scraper.send.to.mailing.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- Action liée à scraper.contact -->
+    <record id="action_server_send_to_mailing" model="ir.actions.server">
+        <field name="name">Envoyer à Email Marketing</field>
+        <field name="model_id" ref="model_scraper_contact"/>
+        <field name="binding_model_id" ref="model_scraper_contact"/>
+        <field name="binding_type">action</field>
+        <field name="state">code</field>
+        <field name="code">
+            action = env.ref('scraping_data_full.action_send_to_mailing').read()[0]
+        </field>
+    </record>
+
+    <!-- Menus -->
+    <menuitem id="menu_scraping_results" name="Résultats" parent="menu_scraping_root" action="action_scraping_result" sequence="20"/>
+</odoo>

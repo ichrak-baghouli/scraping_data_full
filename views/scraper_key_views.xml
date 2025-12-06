@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="scraper_key_form_view" model="ir.ui.view">
+        <field name="name">scraper.key.form</field>
+        <field name="model">scraper.key</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="keyword_input" required="1" placeholder="Ex: meuble, restaurant..."/>
+                        <field name="write_date" invisible="0" readonly="1"/>
+                        <field name="is_scraped" readonly="1"/>
+                    </group>
+                    <button name="scrape_by_keyword"
+                            type="object"
+                            class="btn-primary"
+                            string="Scraper maintenant"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_scraper_key" model="ir.actions.act_window">
+        <field name="name">Scraping KEY</field>
+        <field name="res_model">scraper.key</field>
+        <field name="view_mode">form</field>
+        <field name="res_id">1</field>
+        <field name="target">current</field>
+        <field name="context">{'form_view_initial_mode': 'edit'}</field>
+    </record>
+
+    <!-- Menus -->
+    <menuitem id="menu_scraping_root" name="Scraping" sequence="10"/>
+    <menuitem id="menu_scraping_key" name="Scraping KEY" parent="menu_scraping_root" action="action_scraper_key"
+              sequence="10"/>
+
+</odoo>

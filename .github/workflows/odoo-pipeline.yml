@@ -1,0 +1,181 @@
+name: Odoo CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  # -----------------------------------------------------------
+  # STAGE 1: CODE QUALITY
+  # -----------------------------------------------------------
+  code-quality:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check Python syntax
+        run: |
+          echo "🔍 Checking Python files..."
+          python -m py_compile $(find custom_addons -name "*.py") || true
+
+      - name: Validate XML files
+        run: |
+          echo "📄 Validating XML files..."
+          find custom_addons -name "*.xml" -exec xmllint --noout {} \; || true
+
+      - name: Security scan
+        run: |
+          echo "🔒 Security scanning..."
+          pip install bandit
+          bandit -r custom_addons -q || true
+
+  # -----------------------------------------------------------
+  # STAGE 2: BUILD
+  # -----------------------------------------------------------
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: code-quality
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Odoo image
+        run: |
+          echo "🐳 Building Docker image..."
+          docker build -t odoo-custom:latest .
+
+      - name: Save image
+        run: |
+          echo "💾 Saving Docker image..."
+          docker save odoo-custom:latest -o odoo-image.tar
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: odoo-image
+          path: odoo-image.tar
+
+  # -----------------------------------------------------------
+  # STAGE 3: TEST
+  # -----------------------------------------------------------
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: build
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: odoo
+          POSTGRES_PASSWORD: odoo
+          POSTGRES_DB: odoo_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download image
+        uses: actions/download-artifact@v4
+        with:
+          name: odoo-image
+
+      - name: Load image
+        run: |
+          echo "📦 Loading Docker image..."
+          docker load -i odoo-image.tar
+
+      - name: Run Odoo tests
+        run: |
+          echo "🧪 Running Odoo tests..."
+          docker run --rm \
+            --name odoo-test \
+            --link postgres:db \
+            -e HOST=db \
+            -e USER=odoo \
+            -e PASSWORD=odoo \
+            -v $(pwd)/custom_addons:/opt/odoo/custom_addons \
+            odoo-custom:latest \
+            --database=odoo_test \
+            --init=base \
+            --stop-after-init \
+            --test-enable \
+            --without-demo=all
+
+  # -----------------------------------------------------------
+  # STAGE 4: DEPLOY TO STAGING
+  # -----------------------------------------------------------
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "🚀 Deploying to staging..."
+            cd /opt/odoo-staging
+            docker-compose down
+            git pull origin develop
+            docker-compose up -d --build
+            echo "✅ Staging deployment complete!"
+
+  # -----------------------------------------------------------
+  # STAGE 5: DEPLOY TO PRODUCTION
+  # -----------------------------------------------------------
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+      - name: Manual approval
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.token }}
+          approvers: ${{ secrets.APPROVERS }}
+          minimum-approvals: 1
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "🚀 Deploying to production..."
+            cd /opt/odoo-production
+            
+            echo "💾 Creating backup..."
+            docker-compose exec -T db pg_dump -U odoo odoo > backup_$(date +%Y%m%d_%H%M%S).sql
+            
+            echo "📥 Pulling latest code..."
+            git pull origin main
+            
+            echo "🔧 Restarting services..."
+            docker-compose down
+            docker-compose up -d --build
+            
+            echo "✅ Production deployment complete!"
