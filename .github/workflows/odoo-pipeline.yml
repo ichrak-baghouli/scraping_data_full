@@ -1,4 +1,4 @@
-name: Odoo CI/CD Pipeline
+name: "ÉTAPE 1 - Vérification Structure"
 
 on:
   push:
@@ -8,441 +8,107 @@ on:
   workflow_dispatch:
 
 jobs:
-  # -----------------------------------------------------------
-  # STAGE 1: CODE QUALITY
-  # -----------------------------------------------------------
-  code-quality:
-    name: Code Quality Check
+  validate-structure:
+    name: "1. Vérifier la structure du module"
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
+      - name: "📥 Checkout du code"
         uses: actions/checkout@v4
 
-      - name: Check Python syntax
+      - name: "🔍 Lister la structure"
         run: |
-          echo "🔍 Vérification des fichiers Python..."
-          # Rechercher tous les fichiers Python dans le module
-          python_files=$(find scraping_data_full -name "*.py" 2>/dev/null || true)
-          if [ -n "$python_files" ]; then
-            echo "$python_files" | while read file; do
-              python -m py_compile "$file" && echo "✓ $file" || { echo "✗ $file"; exit 1; }
+          echo "📁 STRUCTURE DU DÉPÔT:"
+          echo "====================="
+          ls -la
+          echo ""
+          
+          echo "🌳 ARBRE COMPLET:"
+          echo "================"
+          find . -type f -not -path "./.git/*" | sort
+
+      - name: "✅ Vérifier les fichiers obligatoires"
+        run: |
+          echo "🔍 VÉRIFICATION DES FICHIERS OBLIGATOIRES:"
+          echo "========================================="
+          
+          REQUIRED_FILES=0
+          
+          # Vérifier __manifest__.py
+          if [ -f "__manifest__.py" ]; then
+            echo "✅ __manifest__.py - PRESENT"
+            REQUIRED_FILES=$((REQUIRED_FILES + 1))
+            
+            # Afficher le contenu
+            echo "📄 CONTENU DE __manifest__.py:"
+            echo "------------------------------"
+            cat __manifest__.py
+            echo ""
+            
+            # Extraire le nom et la version
+            MODULE_NAME=$(grep -oP "'name':\s*'\K[^']+" __manifest__.py 2>/dev/null || echo "Non trouvé")
+            MODULE_VERSION=$(grep -oP "'version':\s*'\K[^']+" __manifest__.py 2>/dev/null || echo "Non trouvé")
+            echo "📌 Nom du module: $MODULE_NAME"
+            echo "🏷️ Version: $MODULE_VERSION"
+          else
+            echo "❌ __manifest__.py - MANQUANT"
+          fi
+          
+          # Vérifier au moins un dossier
+          if [ -d "models" ] || [ -d "views" ] || [ -d "controllers" ]; then
+            echo "✅ Dossier(s) Odoo - PRESENT(S)"
+            REQUIRED_FILES=$((REQUIRED_FILES + 1))
+            
+            echo "📂 DOSSIERS TROUVÉS:"
+            for dir in models views controllers data security tests static; do
+              if [ -d "$dir" ]; then
+                echo "  📁 $dir/ ($(find $dir -type f | wc -l) fichiers)"
+              fi
             done
           else
-            echo "⚠️ Aucun fichier Python trouvé dans scraping_data_full/"
+            echo "⚠️ Aucun dossier Odoo standard trouvé (models/, views/, controllers/)"
           fi
-
-      - name: Check XML files
-        run: |
-          echo "🔍 Vérification des fichiers XML..."
-          xml_files=$(find scraping_data_full -name "*.xml" 2>/dev/null || true)
-          if [ -n "$xml_files" ]; then
-            echo "✅ Fichiers XML trouvés:"
-            echo "$xml_files" | wc -l
+          
+          echo ""
+          echo "📊 RÉSUMÉ: $REQUIRED_FILES/2 conditions remplies"
+          
+          if [ $REQUIRED_FILES -lt 1 ]; then
+            echo "❌ Ce n'est pas un module Odoo valide"
+            exit 1
           else
-            echo "ℹ️ Aucun fichier XML trouvé"
+            echo "✅ Structure Odoo détectée"
           fi
 
-      - name: Create code quality report
+      - name: "📊 Générer le rapport structure"
         run: |
-          echo "📊 RAPPORT QUALITÉ DE CODE" > quality-report.txt
-          echo "Date: $(date)" >> quality-report.txt
-          echo "Branche: ${{ github.ref }}" >> quality-report.txt
-          echo "Module: scraping_data_full" >> quality-report.txt
-          echo "" >> quality-report.txt
+          echo "# RAPPORT STRUCTURE - scraping_data_full" > structure-report.md
+          echo "**Date:** $(date)" >> structure-report.md
+          echo "**Commit:** ${{ github.sha }}" >> structure-report.md
+          echo "" >> structure-report.md
           
-          # Compter les fichiers
-          python_count=$(find scraping_data_full -name "*.py" | wc -l)
-          xml_count=$(find scraping_data_full -name "*.xml" | wc -l)
+          echo "## 📁 Fichiers et dossiers:" >> structure-report.md
+          echo "\`\`\`" >> structure-report.md
+          find . -type f -not -path "./.git/*" | sort >> structure-report.md
+          echo "\`\`\`" >> structure-report.md
           
-          echo "📁 Statistiques:" >> quality-report.txt
-          echo "- Fichiers Python: $python_count" >> quality-report.txt
-          echo "- Fichiers XML: $xml_count" >> quality-report.txt
-          echo "- Taille du module: $(du -sh scraping_data_full | cut -f1)" >> quality-report.txt
-          echo "" >> quality-report.txt
-          echo "✅ Vérifications terminées" >> quality-report.txt
-
-      - name: Upload quality report
-        uses: actions/upload-artifact@v4
-        with:
-          name: quality-report
-          path: quality-report.txt
-
-  # -----------------------------------------------------------
-  # STAGE 2: BUILD
-  # -----------------------------------------------------------
-  build:
-    name: Build Docker Image
-    runs-on: ubuntu-latest
-    needs: code-quality
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create custom_addons structure
-        run: |
-          echo "📁 Préparation de la structure..."
-          # Créer le dossier custom_addons et copier le module
-          mkdir -p custom_addons
-          cp -r scraping_data_full custom_addons/
-          
-          # Vérifier que le module est bien placé
-          echo "Structure créée:"
-          find custom_addons -type f -name "__manifest__.py"
-
-      - name: Create Dockerfile
-        run: |
-          echo "🐳 Création du Dockerfile..."
-          cat > Dockerfile << 'EOF'
-          # Odoo avec module scraping_data_full
-          FROM odoo:16.0
-          
-          # Copier le module personnalisé
-          COPY custom_addons /opt/odoo/custom_addons
-          
-          # Installer les dépendances si nécessaire
-          USER root
-          RUN pip3 install requests beautifulsoup4 lxml
-          USER odoo
-          EOF
-          
-          echo "✅ Dockerfile créé"
-          cat Dockerfile
-
-      - name: Create build artifact
-        run: |
-          echo "📦 Création de l'artefact build..."
-          
-          # Lire la version du module
-          VERSION=$(grep -oP "'version':\s*'\K[^']+" scraping_data_full/__manifest__.py || echo "1.0.0")
-          
-          cat > build-info.json << EOF
-          {
-            "module_name": "scraping_data_full",
-            "version": "$VERSION",
-            "build_date": "$(date -Iseconds)",
-            "commit_sha": "${{ github.sha }}",
-            "odoo_version": "16.0"
-          }
-          EOF
-          
-          echo "📋 LOG DE BUILD" > build.log
-          echo "==============" >> build.log
-          echo "Module: scraping_data_full" >> build.log
-          echo "Version: $VERSION" >> build.log
-          echo "Fichiers Python: $(find scraping_data_full -name "*.py" | wc -l)" >> build.log
-          echo "✅ Build prêt pour les tests" >> build.log
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-build
-          path: |
-            Dockerfile
-            build-info.json
-            build.log
-            custom_addons/
-          retention-days: 7
-
-  # -----------------------------------------------------------
-  # STAGE 3: TEST
-  # -----------------------------------------------------------
-  test:
-    name: Run Odoo Tests
-    runs-on: ubuntu-latest
-    needs: build
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup PostgreSQL
-        run: |
-          echo "🐘 Configuration de PostgreSQL..."
-          sudo systemctl start postgresql
-          sudo -u postgres psql -c "CREATE USER odoo WITH PASSWORD 'odoo';" || true
-          sudo -u postgres psql -c "ALTER USER odoo CREATEDB;" || true
-
-      - name: Create Odoo configuration
-        run: |
-          echo "⚙️ Création de la configuration Odoo..."
-          cat > odoo.conf << 'EOF'
-          [options]
-          addons_path = /opt/odoo/custom_addons,/usr/lib/python3/dist-packages/odoo/addons
-          data_dir = /tmp/odoo-data
-          db_host = localhost
-          db_port = 5432
-          db_user = odoo
-          db_password = odoo
-          admin_passwd = admin
-          without_demo = True
-          test_enable = True
-          EOF
-
-      - name: Run tests with Docker
-        run: |
-          echo "🧪 Exécution des tests Odoo..."
-          
-          # Créer un Dockerfile temporaire pour les tests
-          cat > Dockerfile.test << 'EOF'
-          FROM odoo:16.0
-          
-          # Installer les dépendances pour le scraping
-          USER root
-          RUN apt-get update && apt-get install -y python3-pip
-          RUN pip3 install requests beautifulsoup4 lxml
-          USER odoo
-          
-          # Copier le module
-          COPY scraping_data_full /opt/odoo/custom_addons/scraping_data_full
-          COPY odoo.conf /etc/odoo/
-          EOF
-          
-          # Construire l'image
-          docker build -f Dockerfile.test -t odoo-test-module .
-          
-          # Exécuter les tests
-          docker run --network=host \
-            -e POSTGRES_HOST=localhost \
-            odoo-test-module \
-            odoo -c /etc/odoo/odoo.conf \
-            --test-enable \
-            --stop-after-init \
-            -i scraping_data_full \
-            -d test_db_${{ github.run_id }} 2>&1 | tee odoo-test-log.txt
-          
-          # Sauvegarder les logs
-          docker run --network=host \
-            odoo-test-module \
-            odoo -c /etc/odoo/odoo.conf \
-            --stop-after-init \
-            -d test_db_${{ github.run_id }} \
-            --log-level=test 2>&1 | tee odoo-test-detail.log
-
-      - name: Generate test report
-        run: |
-          echo "📄 Génération du rapport de tests..." 
-          
-          # Extraire les résultats
-          echo "📊 RAPPORT DE TESTS - scraping_data_full" > test-report.txt
-          echo "========================================" >> test-report.txt
-          echo "Date: $(date)" >> test-report.txt
-          echo "Commit: ${{ github.sha }}" >> test-report.txt
-          echo "" >> test-report.txt
-          
-          # Chercher les résultats des tests
-          if [ -f "odoo-test-log.txt" ]; then
-            # Extraire les statistiques
-            grep -E "passed|failed|error|ERROR|SUCCESS" odoo-test-log.txt >> test-report.txt || true
-            
-            # Compter les erreurs
-            ERROR_COUNT=$(grep -c "ERROR\|CRITICAL" odoo-test-log.txt || echo "0")
-            SUCCESS_COUNT=$(grep -c "SUCCESS" odoo-test-log.txt || echo "0")
-            
-            echo "" >> test-report.txt
-            echo "📈 STATISTIQUES:" >> test-report.txt
-            echo "- Erreurs: $ERROR_COUNT" >> test-report.txt
-            echo "- Succès: $SUCCESS_COUNT" >> test-report.txt
-            
-            if [ "$ERROR_COUNT" -eq "0" ] && [ "$SUCCESS_COUNT" -gt "0" ]; then
-              echo "✅ TOUS LES TESTS PASSÉS" >> test-report.txt
-            else
-              echo "❌ PROBLEMES DETECTÉS" >> test-report.txt
-            fi
-            
-            # Ajouter les 20 dernières lignes du log
-            echo "" >> test-report.txt
-            echo "📝 DERNIERES LIGNES DU LOG:" >> test-report.txt
-            tail -20 odoo-test-log.txt >> test-report.txt
-          fi
-          
-          echo "🔍 AFFICHAGE DU RAPPORT:"
-          cat test-report.txt
-
-      - name: Run custom tests if exist
-        run: |
-          # Vérifier si le module a des tests unitaires
-          if [ -d "scraping_data_full/tests" ]; then
-            echo "🔧 Exécution des tests unitaires..."
-            
-            # Créer un script Python pour exécuter les tests
-            cat > run_module_tests.py << 'EOF'
-            import unittest
-            import sys
-            import os
-            
-            # Ajouter le module au path
-            sys.path.append('scraping_data_full')
-            
-            # Découvrir et exécuter les tests
-            loader = unittest.TestLoader()
-            start_dir = 'scraping_data_full/tests'
-            
-            if os.path.exists(start_dir):
-                suite = loader.discover(start_dir, pattern='test_*.py')
-                runner = unittest.TextTestRunner(verbosity=2)
-                result = runner.run(suite)
-                
-                if result.wasSuccessful():
-                    print("\n✅ Tous les tests unitaires ont réussi")
-                    sys.exit(0)
-                else:
-                    print("\n❌ Certains tests ont échoué")
-                    sys.exit(1)
-            else:
-                print("ℹ️ Aucun dossier de tests trouvé")
-                sys.exit(0)
-            EOF
-            
-            python run_module_tests.py 2>&1 | tee unit-tests.log
-            
-            # Ajouter au rapport principal
-            if [ -f "test-report.txt" ]; then
-              echo "" >> test-report.txt
-              echo "🧪 TESTS UNITAIRES:" >> test-report.txt
-              tail -10 unit-tests.log >> test-report.txt || true
-            fi
+          echo "" >> structure-report.md
+          echo "## ✅ Validation:" >> structure-report.md
+          if [ -f "__manifest__.py" ]; then
+            echo "- ✅ __manifest__.py présent" >> structure-report.md
           else
-            echo "ℹ️ Aucun dossier tests/ dans le module"
+            echo "- ❌ __manifest__.py manquant" >> structure-report.md
           fi
+          
+          echo "" >> structure-report.md
+          echo "## 📦 Statistiques:" >> structure-report.md
+          echo "- Fichiers Python: $(find . -name "*.py" -not -path "./.git/*" | wc -l)" >> structure-report.md
+          echo "- Fichiers XML: $(find . -name "*.xml" -not -path "./.git/*" | wc -l)" >> structure-report.md
+          echo "- Taille totale: $(du -sh . | cut -f1)" >> structure-report.md
+          
+          echo "📄 Rapport structure généré"
 
-      - name: Upload test artifacts
+      - name: "📤 Uploader le rapport"
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
-          path: |
-            test-report.txt
-            odoo-test-log.txt
-            odoo-test-detail.log
-            unit-tests.log
-          retention-days: 7
-
-  # -----------------------------------------------------------
-  # STAGE 4: DEPLOY SIMULATION
-  # -----------------------------------------------------------
-  deploy:
-    name: Deploy Module
-    runs-on: ubuntu-latest
-    needs: test
-    environment: 
-      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
-    
-    steps:
-      - name: Prepare deployment
-        run: |
-          echo "🚀 Préparation du déploiement..."
-          
-          # Lire la version du module
-          MODULE_VERSION=$(grep -oP "'version':\s*'\K[^']+" scraping_data_full/__manifest__.py || echo "1.0.0")
-          
-          # Créer un package du module
-          tar -czf scraping_data_full-v${MODULE_VERSION}.tar.gz scraping_data_full/
-          
-          # Créer le manifeste de déploiement
-          cat > deploy-manifest.json << EOF
-          {
-            "module": "scraping_data_full",
-            "version": "${MODULE_VERSION}",
-            "deployment_type": "${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}",
-            "timestamp": "$(date -Iseconds)",
-            "commit": "${{ github.sha }}",
-            "files": [
-              "scraping_data_full-v${MODULE_VERSION}.tar.gz"
-            ],
-            "checksum": "$(sha256sum scraping_data_full-v${MODULE_VERSION}.tar.gz | cut -d' ' -f1)"
-          }
-          EOF
-          
-          echo "📦 Module packagé: scraping_data_full-v${MODULE_VERSION}.tar.gz"
-          ls -lh *.tar.gz
-
-      - name: Simulate deployment
-        run: |
-          echo "🚀 SIMULATION DE DÉPLOIEMENT DU MODULE"
-          echo "======================================"
-          
-          ENV_TYPE="${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}"
-          
-          echo "🌍 ENVIRONNEMENT: $ENV_TYPE"
-          echo "📦 MODULE: scraping_data_full"
-          echo "🏷️ VERSION: $(grep -oP "'version':\s*'\K[^']+" scraping_data_full/__manifest__.py || echo '1.0.0')"
-          echo ""
-          
-          echo "📋 ÉTAPES DE DÉPLOIEMENT:"
-          echo "1. ✅ Validation du module"
-          echo "2. ✅ Vérification des dépendances"
-          echo "3. ✅ Backup de l'ancienne version"
-          echo "4. ✅ Installation du module"
-          echo "5. ✅ Mise à jour du module"
-          echo "6. ✅ Tests post-déploiement"
-          echo "7. ✅ Vérification de l'intégrité"
-          echo ""
-          
-          # Simulation des commandes Odoo
-          echo "💻 COMMANDES SIMULÉES:"
-          echo "# Copier le module"
-          echo "scp scraping_data_full-v*.tar.gz user@server:/opt/odoo/custom_addons/"
-          echo ""
-          echo "# Sur le serveur Odoo:"
-          echo "cd /opt/odoo/custom_addons"
-          echo "tar -xzf scraping_data_full-v*.tar.gz"
-          echo "sudo systemctl restart odoo"
-          echo ""
-          echo "# Vérifier l'installation"
-          echo "sudo -u odoo /opt/odoo/odoo-bin -c /etc/odoo/odoo.conf --stop-after-init -u scraping_data_full -d production_db"
-
-      - name: Create deployment result
-        run: |
-          cat > deployment-result.txt << 'EOF'
-          🎯 DÉPLOIEMENT DU MODULE TERMINÉ
-          
-          ✅ SUCCÈS
-          Module: scraping_data_full
-          Version: $(grep -oP "'version':\s*'\K[^']+" scraping_data_full/__manifest__.py || echo '1.0.0')
-          Statut: Prêt pour déploiement
-          Heure: $(date)
-          Environnement: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}
-          
-          📦 ARTEFACTS DISPONIBLES:
-          • scraping_data_full-v*.tar.gz - Archive du module
-          • deploy-manifest.json - Manifeste de déploiement
-          
-          🚀 INSTRUCTIONS DE DÉPLOIEMENT:
-          1. Télécharger l'artefact "deployment-*"
-          2. Extraire l'archive sur le serveur Odoo
-          3. Placer dans /opt/odoo/custom_addons/
-          4. Redémarrer Odoo
-          5. Mettre à jour le module via l'interface web
-          
-          ⚠️ Ceci est une simulation - Aucun serveur réel n'a été mis à jour
-          EOF
-          
-          cat deployment-result.txt
-
-      - name: Upload deployment artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
-          path: |
-            scraping_data_full-*.tar.gz
-            deploy-manifest.json
-            deployment-result.txt
-          retention-days: 30
-
-      - name: Summary
-        run: |
-          echo ""
-          echo "📋 RÉSUMÉ DU PIPELINE CI/CD"
-          echo "============================"
-          echo "🔹 Qualité de code: ✅ PASSÉ"
-          echo "🔹 Build: ✅ PASSÉ"
-          echo "🔹 Tests Odoo: ✅ PASSÉ"
-          echo "🔹 Déploiement: ✅ SIMULÉ"
-          echo ""
-          echo "📊 INFORMATIONS DU MODULE:"
-          echo "- Nom: scraping_data_full"
-          echo "- Version: $(grep -oP "'version':\s*'\K[^']+" scraping_data_full/__manifest__.py || echo '1.0.0')"
-          echo "- Fichiers: $(find scraping_data_full -type f | wc -l) total"
-          echo ""
-          echo "✅ PIPELINE COMPLÉTÉ AVEC SUCCÈS!"
+          name: 01-structure-report
+          path: structure-report.md
