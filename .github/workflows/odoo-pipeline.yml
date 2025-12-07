@@ -130,33 +130,22 @@ jobs:
           echo "📦 Informations du build récupérées :"
           cat artifacts/build-info.json | python -m json.tool
 
-      - name: Simulate Odoo tests
+     
+      - name: Run Odoo Tests
         run: |
-          echo "🧪 Simulation des tests Odoo..."
-          
-          # Créer un rapport de test
-          cat > test-report.txt << 'EOF'
-          📊 RAPPORT DE TESTS ODOO
-          ======================
-          
-          ✅ TESTS PASSÉS
-          • Test d'installation des modules
-          • Test des dépendances
-          • Test des contraintes de base de données
-          • Test des vues XML
-          
-          📈 STATISTIQUES
-          Modules testés: 5
-          Tests exécutés: 42
-          Taux de succès: 100%
-          Durée: 2m 15s
-          
-          🎯 RÉSULTAT
-          Tous les tests ont réussi !
-          EOF
-          
-          # Afficher le rapport
+         echo "🧪 Exécution des tests Odoo..."
+         ./odoo-bin \
+         -c odoo.conf \
+         --test-enable \
+         --stop-after-init \
+         -i scraping_data_full \
+         -d test_db | tee odoo-test-log.txt
+          echo "📄 Génération du rapport..." 
+          grep -E "odoo.tests.result|ERROR|FAILED|tests" odoo-test-log.txt > test-report.txt
+          echo "📊 Rapport généré:"
           cat test-report.txt
+
+
 
       - name: Upload test report
         uses: actions/upload-artifact@v4
