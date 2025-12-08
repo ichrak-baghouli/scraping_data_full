@@ -1,713 +1,111 @@
-name: "TEST COMPLET - Module scraping_data_full"
+name: "TEST ODOO MODULE"
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [master, develop]
   pull_request:
-    branches: [ master ]
+    branches: [master]
   workflow_dispatch:
 
 jobs:
-  # -----------------------------------------------------------
-  # ÉTAPE 1 : VÉRIFICATION STRUCTURE
-  # -----------------------------------------------------------
-  etape-1-structure:
-    name: "1. Vérification Structure"
+  structure:
+    name: "1. Structure"
     runs-on: ubuntu-latest
     
     steps:
-      - name: "📥 Checkout du code"
-        uses: actions/checkout@v4
+    - name: "📥 Télécharger code"
+      uses: actions/checkout@v4
 
-      - name: "🔍 Vérifier les fichiers obligatoires"
-        run: |
-          echo "🔍 VÉRIFICATION STRUCTURELLE"
-          echo "============================"
-          
-          echo "📁 Structure trouvée:"
-          ls -la
+    - name: "🔍 Vérifier module"
+      run: |
+        echo "🔍 VÉRIFICATION STRUCTURE"
+        echo "========================="
+        
+        if [ ! -f "__manifest__.py" ]; then
+          echo "❌ ERREUR: __manifest__.py manquant"
+          exit 1
+        fi
+        
+        echo "✅ Module Odoo détecté"
+        
+        echo ""
+        echo "📁 Structure:"
+        ls -la
+        
+        if [ -d "tests" ]; then
           echo ""
-          
-          # Vérifier si c'est un module Odoo
-          if [ ! -f "__manifest__.py" ] && [ ! -f "__openerp__.py" ]; then
-            echo "❌ ERREUR: Ce n'est pas un module Odoo valide"
-            echo "   Fichier __manifest__.py ou __openerp__.py manquant"
-            echo ""
-            echo "📁 Fichiers disponibles:"
-            find . -type f -not -path "./.git/*" | head -20
-            exit 1
-          fi
-          
-          echo "✅ Module Odoo détecté"
-          
-          # Lire les informations du manifeste
-          if [ -f "__manifest__.py" ]; then
-            echo ""
-            echo "📄 INFORMATIONS DU MODULE:"
-            echo "-------------------------"
-            MODULE_NAME=$(grep -oP "'name':\s*'\K[^']+" __manifest__.py 2>/dev/null || echo "Non trouvé")
-            MODULE_VERSION=$(grep -oP "'version':\s*'\K[^']+" __manifest__.py 2>/dev/null || echo "Non trouvé")
-            MODULE_SUMMARY=$(grep -oP "'summary':\s*'\K[^']+" __manifest__.py 2>/dev/null || echo "Non trouvé")
-            
-            echo "📌 Nom: $MODULE_NAME"
-            echo "🏷️ Version: $MODULE_VERSION"
-            echo "📝 Description: $MODULE_SUMMARY"
-          fi
-          
-          echo ""
-          echo "📂 STRUCTURE DÉTAILLÉE:"
-          echo "---------------------"
-          for dir in models views controllers data security tests static; do
-            if [ -d "$dir" ]; then
-              FILE_COUNT=$(find "$dir" -type f | wc -l)
-              echo "📁 $dir/ ($FILE_COUNT fichiers)"
-            fi
-          done
-          
-          echo ""
-          echo "📊 STATISTIQUES:"
-          echo "--------------"
-          echo "Fichiers Python: $(find . -name '*.py' -not -path './.git/*' | wc -l)"
-          echo "Fichiers XML: $(find . -name '*.xml' -not -path './.git/*' | wc -l)"
-          echo "Taille: $(du -sh . | cut -f1)"
+          echo "🧪 Tests trouvés:"
+          find tests -name "*.py"
+        fi
 
-      - name: "📄 Générer le rapport structure"
-        run: |
-          echo "# 📋 RAPPORT STRUCTURE - ÉTAPE 1" > rapport-etape-1.md
-          echo "**Date:** $(date)" >> rapport-etape-1.md
-          echo "**Commit:** ${{ github.sha }}" >> rapport-etape-1.md
-          echo "" >> rapport-etape-1.md
-          
-          echo "## ✅ VÉRIFICATIONS:" >> rapport-etape-1.md
-          echo "- ✅ Module Odoo détecté" >> rapport-etape-1.md
-          
-          if [ -f "__manifest__.py" ]; then
-            echo "- ✅ __manifest__.py présent" >> rapport-etape-1.md
-          fi
-          
-          echo "" >> rapport-etape-1.md
-          echo "## 📁 STRUCTURE:" >> rapport-etape-1.md
-          echo "\`\`\`" >> rapport-etape-1.md
-          find . -maxdepth 2 -type f -not -path "./.git/*" | sort >> rapport-etape-1.md
-          echo "\`\`\`" >> rapport-etape-1.md
-          
-          echo "📊 Rapport structure généré"
-
-      - name: "📤 Sauvegarder le rapport"
-        uses: actions/upload-artifact@v4
-        with:
-          name: etape-1-structure
-          path: rapport-etape-1.md
-
-  # -----------------------------------------------------------
-  # ÉTAPE 2 : VÉRIFICATION SYNTAXE
-  # -----------------------------------------------------------
-  etape-2-syntaxe:
-    name: "2. Vérification Syntaxique"
+  tests:
+    name: "2. Tests unitaires"
     runs-on: ubuntu-latest
-    needs: etape-1-structure
+    needs: structure
     
     steps:
-      - name: "📥 Checkout du code"
-        uses: actions/checkout@v4
+    - name: "📥 Télécharger code"
+      uses: actions/checkout@v4
 
-      - name: "🔧 Installer Python"
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+    - name: "🐍 Installer Python"
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
 
-      - name: "🐍 Vérifier syntaxe Python"
-        run: |
-          echo "🔍 VÉRIFICATION SYNTAXE PYTHON"
-          echo "=============================="
-          
-          PYTHON_FILES=$(find . -name "*.py" -not -path "./.git/*")
-          TOTAL_FILES=$(echo "$PYTHON_FILES" | wc -l)
-          
-          if [ $TOTAL_FILES -eq 0 ]; then
-            echo "⚠️ Aucun fichier Python trouvé"
-            exit 1
-          fi
-          
-          echo "📁 Fichiers à vérifier: $TOTAL_FILES"
-          echo ""
-          
-          ERROR_FOUND=false
-          
-          for py_file in $PYTHON_FILES; do
-            echo "🔎 $py_file"
-            if python -m py_compile "$py_file"; then
-              echo "  ✅ OK"
-            else
-              echo "  ❌ ERREUR"
-              ERROR_FOUND=true
-            fi
-          done
-          
-          echo ""
-          if [ "$ERROR_FOUND" = true ]; then
-            echo "❌ ERREURS DE SYNTAXE DÉTECTÉES"
-            exit 1
-          else
-            echo "✅ TOUS LES FICHIERS PYTHON SONT VALIDES"
-          fi
+    - name: "📦 Installer Odoo"
+      run: |
+        echo "📦 INSTALLATION ODOO"
+        echo "===================="
+        pip install git+https://github.com/odoo/odoo.git@16.0
+        pip install pytest requests beautifulsoup4 lxml
 
-      - name: "📄 Vérifier les imports"
-        run: |
-          echo "🔍 VÉRIFICATION DES IMPORTS"
-          echo "==========================="
-          
-          cat > check_imports.py << 'EOF'
-          import ast
-          import os
-          import sys
-          
-          print("🔍 Analyse des imports Python...")
-          print("=" * 40)
-          
-          odoo_imports_found = False
-          error_files = []
-          
-          for root, dirs, files in os.walk("."):
-              if ".git" in root:
-                  continue
-                  
-              for file in files:
-                  if file.endswith(".py"):
-                      filepath = os.path.join(root, file)
-                      try:
-                          with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                              content = f.read()
-                          
-                          tree = ast.parse(content)
-                          
-                          # Chercher les imports Odoo
-                          for node in ast.walk(tree):
-                              if isinstance(node, ast.ImportFrom):
-                                  if node.module and ('odoo' in node.module or 'openerp' in node.module):
-                                      odoo_imports_found = True
-                                      print(f"✅ {filepath}: Import Odoo détecté")
-                                      break
-                              
-                      except SyntaxError as e:
-                          print(f"❌ {filepath}: Erreur syntaxique - {e}")
-                          error_files.append(filepath)
-                      except Exception as e:
-                          print(f"⚠️ {filepath}: Erreur de lecture - {e}")
-          
-          print("\n" + "=" * 40)
-          print("📊 RÉSULTAT:")
-          
-          if odoo_imports_found:
-              print("✅ Imports Odoo détectés")
-          else:
-              print("⚠️ Aucun import Odoo détecté")
-          
-          if error_files:
-              print(f"❌ {len(error_files)} fichier(s) avec erreur")
-              sys.exit(1)
-          else:
-              print("✅ Aucune erreur d'import")
-          EOF
-          
-          python check_imports.py
-
-      - name: "📊 Générer le rapport syntaxe"
-        run: |
-          echo "# 📋 RAPPORT SYNTAXE - ÉTAPE 2" > rapport-etape-2.md
-          echo "**Date:** $(date)" >> rapport-etape-2.md
-          echo "" >> rapport-etape-2.md
-          
-          PY_COUNT=$(find . -name "*.py" -not -path "./.git/*" | wc -l)
-          XML_COUNT=$(find . -name "*.xml" -not -path "./.git/*" | wc -l)
-          
-          echo "## 📊 STATISTIQUES:" >> rapport-etape-2.md
-          echo "- Fichiers Python: $PY_COUNT" >> rapport-etape-2.md
-          echo "- Fichiers XML: $XML_COUNT" >> rapport-etape-2.md
-          echo "" >> rapport-etape-2.md
-          
-          echo "## ✅ RÉSULTAT:" >> rapport-etape-2.md
-          echo "- ✅ Syntaxe Python: VALIDE" >> rapport-etape-2.md
-          echo "- ✅ Imports: VÉRIFIÉS" >> rapport-etape-2.md
-          
-          echo "" >> rapport-etape-2.md
-          echo "📊 Rapport syntaxe généré"
-
-      - name: "📤 Sauvegarder le rapport"
-        uses: actions/upload-artifact@v4
-        with:
-          name: etape-2-syntaxe
-          path: |
-            rapport-etape-2.md
-            check_imports.py
-
-  # -----------------------------------------------------------
-  # ÉTAPE 3 : TESTS UNITAIRES
-  # -----------------------------------------------------------
-  etape-3-tests:
-    name: "3. Tests Unitaires"
-    runs-on: ubuntu-latest
-    needs: etape-2-syntaxe
-    
-    steps:
-      - name: "📥 Checkout du code"
-        uses: actions/checkout@v4
-
-      - name: "🔧 Installer les dépendances"
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: "🔧 Installer les dépendances (pip)"
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest
-
-      - name: "🔍 Chercher les tests"
-        run: |
-          echo "🔍 RECHERCHE DES TESTS"
-          echo "======================"
-          
-          echo "📁 Dossiers de tests:"
-          if [ -d "tests" ]; then
-            echo "✅ Dossier 'tests/' trouvé"
-            find tests -name "*.py" | while read file; do
-              echo "  📄 $file"
-            done
-          else
-            echo "ℹ️ Aucun dossier 'tests/'"
-          fi
-          
-          echo ""
-          echo "📄 Fichiers test_*.py:"
+    - name: "🧪 Exécuter tests"
+      run: |
+        echo "🧪 EXÉCUTION TESTS"
+        echo "=================="
+        
+        if [ -d "tests" ]; then
+          echo "📂 Dossier tests trouvé"
+          cd tests
+          python -m pytest . -v 2>&1 | tee test_results.log
+          cd ..
+        else
           TEST_FILES=$(find . -name "test_*.py" -not -path "./.git/*")
           if [ -n "$TEST_FILES" ]; then
-            echo "$TEST_FILES" | while read file; do
-              echo "  ✅ $file"
-            done
+            echo "📄 Fichiers test_*.py trouvés"
+            python -m pytest $TEST_FILES -v 2>&1 | tee test_results.log
           else
-            echo "ℹ️ Aucun fichier test_*.py"
+            echo "❌ Aucun test trouvé"
+            exit 1
           fi
+        fi
+        
+        if grep -q "FAILED\|ERROR" test_results.log; then
+          echo "❌ Tests échoués"
+          exit 1
+        else
+          echo "✅ Tests réussis"
+        fi
 
-      - name: "🧪 Exécuter les tests"
-        run: |
-          echo "🧪 EXÉCUTION DES TESTS"
-          echo "======================"
-          
-          # Créer un test minimal si aucun test n'existe
-          if [ ! -d "tests" ] && [ -z "$(find . -name 'test_*.py' -not -path './.git/*')" ]; then
-            echo "ℹ️ Création d'un test minimal..."
-            
-            mkdir -p tests
-            cat > tests/test_basic.py << 'EOF'
-          """Tests basiques pour scraping_data_full"""
-          
-          import os
-          import unittest
-          
-          class TestModuleStructure(unittest.TestCase):
-              def test_manifest_exists(self):
-                  """Test que le manifeste existe"""
-                  self.assertTrue(os.path.exists('__manifest__.py'))
-              
-              def test_manifest_content(self):
-                  """Test que le manifeste est valide"""
-                  import ast
-                  with open('__manifest__.py', 'r') as f:
-                      content = f.read()
-                  
-                  # Vérifier que c'est un dictionnaire Python valide
-                  manifest = ast.literal_eval(content)
-                  self.assertIsInstance(manifest, dict)
-                  
-                  # Vérifier les clés obligatoires
-                  self.assertIn('name', manifest)
-                  self.assertIn('version', manifest)
-                  self.assertIn('summary', manifest)
-              
-              def test_python_files(self):
-                  """Test qu'il y a des fichiers Python"""
-                  py_files = [f for f in os.listdir('.') if f.endswith('.py') and f != '__manifest__.py']
-                  self.assertGreater(len(py_files), 0, "Le module doit contenir des fichiers Python")
-          
-          if __name__ == '__main__':
-              unittest.main()
-          EOF
-          fi
-          
-          # Exécuter les tests
-          echo "🚀 Lancement des tests..."
-          
-          TEST_RESULT=0
-          
-          if [ -d "tests" ]; then
-            cd tests
-            python -m pytest . -v 2>&1 | tee test-output.log || TEST_RESULT=$?
-            cd ..
-          else
-            # Chercher des fichiers de test
-            TEST_FILES=$(find . -name "test_*.py" -not -path "./.git/*")
-            if [ -n "$TEST_FILES" ]; then
-              python -m pytest $TEST_FILES -v 2>&1 | tee test-output.log || TEST_RESULT=$?
-            else
-              # Exécuter le test minimal
-              cd tests
-              python test_basic.py -v 2>&1 | tee test-output.log || TEST_RESULT=$?
-              cd ..
-            fi
-          fi
-          
-          echo ""
-          echo "📊 RÉSULTAT:"
-          if [ $TEST_RESULT -eq 0 ]; then
-            echo "✅ TOUS LES TESTS ONT RÉUSSI"
-          else
-            echo "❌ CERTAINS TESTS ONT ÉCHOUÉ"
-          fi
+    - name: "💾 Sauvegarder résultats"
+      uses: actions/upload-artifact@v4
+      with:
+        name: resultats-tests
+        path: test_results.log
 
-      - name: "📊 Générer le rapport tests"
-        run: |
-          echo "# 📋 RAPPORT TESTS - ÉTAPE 3" > rapport-etape-3.md
-          echo "**Date:** $(date)" >> rapport-etape-3.md
-          echo "" >> rapport-etape-3.md
-          
-          if [ -f "tests/test-output.log" ]; then
-            echo "## 🧪 RÉSULTATS DES TESTS:" >> rapport-etape-3.md
-            echo "\`\`\`" >> rapport-etape-3.md
-            tail -30 tests/test-output.log >> rapport-etape-3.md
-            echo "\`\`\`" >> rapport-etape-3.md
-          elif [ -f "test-output.log" ]; then
-            echo "## 🧪 RÉSULTATS DES TESTS:" >> rapport-etape-3.md
-            echo "\`\`\`" >> rapport-etape-3.md
-            tail -30 test-output.log >> rapport-etape-3.md
-            echo "\`\`\`" >> rapport-etape-3.md
-          fi
-          
-          echo "" >> rapport-etape-3.md
-          echo "## 📊 STATUT:" >> rapport-etape-3.md
-          if [ -f "tests/test-output.log" ] && grep -q "FAILED\|ERROR" tests/test-output.log; then
-            echo "❌ TESTS ÉCHOUÉS" >> rapport-etape-3.md
-          elif [ -f "test-output.log" ] && grep -q "FAILED\|ERROR" test-output.log; then
-            echo "❌ TESTS ÉCHOUÉS" >> rapport-etape-3.md
-          else
-            echo "✅ TOUS LES TESTS RÉUSSIS" >> rapport-etape-3.md
-          fi
-          
-          echo "📊 Rapport tests généré"
-
-      - name: "📤 Sauvegarder les résultats"
-        uses: actions/upload-artifact@v4
-        with:
-          name: etape-3-tests
-          path: |
-            rapport-etape-3.md
-            test-output.log
-            tests/test-output.log 2>/dev/null || true
-
-  # -----------------------------------------------------------
-  # ÉTAPE 4 : TEST DOCKER ODOO
-  # -----------------------------------------------------------
-  etape-4-docker:
-    name: "4. Test Docker Odoo"
+  rapport:
+    name: "3. Rapport"
     runs-on: ubuntu-latest
-    needs: etape-3-tests
+    needs: [structure, tests]
     
     steps:
-      - name: "📥 Checkout du code"
-        uses: actions/checkout@v4
+    - name: "📥 Télécharger code"
+      uses: actions/checkout@v4
 
-      - name: "🐳 Créer l'environnement Docker"
-        run: |
-          echo "🐳 CRÉATION DE L'ENVIRONNEMENT DOCKER"
-          echo "===================================="
-          
-          # Créer une structure de test
-          mkdir -p docker-test
-          
-          # Créer Dockerfile
-          cat > docker-test/Dockerfile << 'EOF'
-          FROM odoo:16.0
-          
-          USER root
-          
-          # Installer les dépendances pour le scraping
-          RUN pip3 install --upgrade pip
-          RUN pip3 install requests beautifulsoup4 lxml
-          
-          # Copier le module
-          COPY . /opt/odoo/custom_addons/scraping_data_full
-          
-          # Vérifier les permissions
-          RUN chown -R odoo:odoo /opt/odoo/custom_addons
-          
-          USER odoo
-          
-          # Vérifier que le module est bien copié
-          RUN ls -la /opt/odoo/custom_addons/scraping_data_full/
-          EOF
-          
-          # Créer docker-compose
-          cat > docker-test/docker-compose.yml << 'EOF'
-          version: '3.8'
-          services:
-            db:
-              image: postgres:13
-              environment:
-                - POSTGRES_DB=postgres
-                - POSTGRES_USER=odoo
-                - POSTGRES_PASSWORD=odoo
-              healthcheck:
-                test: ["CMD-SHELL", "pg_isready -U odoo"]
-                interval: 10s
-                timeout: 5s
-                retries: 5
-            
-            odoo:
-              build: .
-              depends_on:
-                db:
-                  condition: service_healthy
-              environment:
-                - HOST=db
-                - USER=odoo
-                - PASSWORD=odoo
-              command: >
-                odoo --dev=reload
-                --database=test_db
-                --db-filter=test_db
-                --without-demo=all
-                --stop-after-init
-              ports:
-                - "8069:8069"
-          EOF
-          
-          echo "✅ Environnement Docker créé"
+    - name: "📊 Générer rapport"
+      run: |
+        echo "📊 RAPPORT FINAL"
+        echo "================"
+        
+        cat > RAPPORT.md << 'EOF'
 
-      - name: "🚀 Tester avec Docker"
-        run: |
-          echo "🚀 TEST AVEC DOCKER"
-          echo "==================="
-          
-          cd docker-test
-          
-          echo "🐳 Construction de l'image..."
-          docker-compose build 2>&1 | tee docker-build.log
-          
-          echo ""
-          echo "🚀 Lancement des services..."
-          timeout 120 docker-compose up 2>&1 | tee docker-run.log || true
-          
-          echo ""
-          echo "📝 Analyse des logs..."
-          
-          # Vérifier les erreurs
-          if grep -q "ERROR\|CRITICAL" docker-run.log; then
-            echo "❌ ERREURS DÉTECTÉES DANS LES LOGS:"
-            grep "ERROR\|CRITICAL" docker-run.log | head -10
-          else
-            echo "✅ AUCUNE ERREUR CRITIQUE DÉTECTÉE"
-          fi
-          
-          # Vérifier le démarrage
-          if grep -q "HTTP service (longpolling) running on" docker-run.log; then
-            echo "✅ ODOO A DÉMARRÉ AVEC SUCCÈS"
-          else
-            echo "⚠️ ODOO N'A PAS DÉMARRÉ NORMALEMENT"
-          fi
-          
-          echo ""
-          echo "🧹 Nettoyage..."
-          docker-compose down -v
-
-      - name: "📊 Générer le rapport Docker"
-        run: |
-          echo "# 📋 RAPPORT DOCKER - ÉTAPE 4" > rapport-etape-4.md
-          echo "**Date:** $(date)" >> rapport-etape-4.md
-          echo "" >> rapport-etape-4.md
-          
-          if [ -f "docker-test/docker-run.log" ]; then
-            echo "## 🐳 LOGS DOCKER:" >> rapport-etape-4.md
-            echo "\`\`\`" >> rapport-etape-4.md
-            tail -50 docker-test/docker-run.log >> rapport-etape-4.md
-            echo "\`\`\`" >> rapport-etape-4.md
-          fi
-          
-          echo "" >> rapport-etape-4.md
-          echo "## 📊 RÉSULTAT:" >> rapport-etape-4.md
-          echo "- ✅ Image Docker construite" >> rapport-etape-4.md
-          echo "- ✅ Services lancés" >> rapport-etape-4.md
-          echo "- ✅ Test d'intégration Odoo réussi" >> rapport-etape-4.md
-          
-          echo "📊 Rapport Docker généré"
-
-      - name: "📤 Sauvegarder les logs"
-        uses: actions/upload-artifact@v4
-        with:
-          name: etape-4-docker
-          path: |
-            rapport-etape-4.md
-            docker-test/docker-build.log
-            docker-test/docker-run.log
-
-  # -----------------------------------------------------------
-  # ÉTAPE 5 : RAPPORT FINAL
-  # -----------------------------------------------------------
-  etape-5-final:
-    name: "5. Rapport Final"
-    runs-on: ubuntu-latest
-    needs: [etape-1-structure, etape-2-syntaxe, etape-3-tests, etape-4-docker]
-    
-    steps:
-      - name: "📥 Checkout du code"
-        uses: actions/checkout@v4
-
-      - name: "📋 Générer le rapport final"
-        run: |
-          echo "📋 GÉNÉRATION DU RAPPORT FINAL"
-          echo "=============================="
-          
-          # Récupérer les infos du module
-          if [ -f "__manifest__.py" ]; then
-            MODULE_NAME=$(grep -oP "'name':\s*'\K[^']+" __manifest__.py 2>/dev/null || echo "scraping_data_full")
-            MODULE_VERSION=$(grep -oP "'version':\s*'\K[^']+" __manifest__.py 2>/dev/null || echo "1.0.0")
-            MODULE_SUMMARY=$(grep -oP "'summary':\s*'\K[^']+" __manifest__.py 2>/dev/null || echo "")
-          else
-            MODULE_NAME="scraping_data_full"
-            MODULE_VERSION="1.0.0"
-            MODULE_SUMMARY=""
-          fi
-          
-          # Créer le rapport final
-          cat > RAPPORT_FINAL.md << EOF
-          # 🎯 RAPPORT FINAL DE VALIDATION
-          
-          ## 📋 INFORMATIONS DU MODULE
-          - **Nom:** $MODULE_NAME
-          - **Version:** $MODULE_VERSION
-          - **Description:** $MODULE_SUMMARY
-          - **Date du test:** $(date)
-          - **Commit:** ${{ github.sha }}
-          - **Branche:** ${{ github.ref }}
-          
-          ## ✅ RÉSUMÉ DES TESTS
-          
-          ### ÉTAPE 1: Vérification Structure ✅
-          **Statut:** COMPLETÉ AVEC SUCCÈS  
-          **Détail:** Structure Odoo valide confirmée
-          
-          ### ÉTAPE 2: Vérification Syntaxique ✅
-          **Statut:** COMPLETÉ AVEC SUCCÈS  
-          **Détail:** Tous les fichiers Python sont syntaxiquement valides
-          
-          ### ÉTAPE 3: Tests Unitaires ✅
-          **Statut:** COMPLETÉ AVEC SUCCÈS  
-          **Détail:** Tests exécutés sans erreur
-          
-          ### ÉTAPE 4: Test Docker Odoo ✅
-          **Statut:** COMPLETÉ AVEC SUCCÈS  
-          **Détail:** Module compatible avec Odoo 16.0
-          
-          ## 📊 STATISTIQUES DU MODULE
-          EOF
-          
-          # Ajouter les statistiques
-          PY_COUNT=$(find . -name "*.py" -not -path "./.git/*" | wc -l)
-          XML_COUNT=$(find . -name "*.xml" -not -path "./.git/*" | wc -l)
-          TOTAL_SIZE=$(du -sh . | cut -f1)
-          
-          echo "- **Fichiers Python:** $PY_COUNT" >> RAPPORT_FINAL.md
-          echo "- **Fichiers XML:** $XML_COUNT" >> RAPPORT_FINAL.md
-          echo "- **Taille totale:** $TOTAL_SIZE" >> RAPPORT_FINAL.md
-          echo "" >> RAPPORT_FINAL.md
-          
-          # Ajouter la structure
-          echo "## 📁 STRUCTURE DU MODULE" >> RAPPORT_FINAL.md
-          echo "\`\`\`" >> RAPPORT_FINAL.md
-          find . -maxdepth 3 -type f -not -path "./.git/*" | sort >> RAPPORT_FINAL.md
-          echo "\`\`\`" >> RAPPORT_FINAL.md
-          
-          # Ajouter les recommandations
-          cat >> RAPPORT_FINAL.md << 'EOF'
-          
-          ## 🚀 RECOMMANDATIONS POUR LE DÉPLOIEMENT
-          
-          1. **✅ Module validé** - Prêt pour la production
-          2. **📦 Préparation:**
-             ```bash
-             # Sur le serveur Odoo
-             cd /opt/odoo/custom_addons
-             
-             # Option 1: Cloner le dépôt
-             git clone [URL_DU_REPO] scraping_data_full
-             
-             # Option 2: Copier les fichiers manuellement
-             # Assurez-vous de copier tous les fichiers du module
-             ```
-          
-          3. **🔧 Installation:**
-             ```bash
-             # Vérifier les permissions
-             chown -R odoo:odoo /opt/odoo/custom_addons/scraping_data_full
-             
-             # Redémarrer Odoo
-             sudo systemctl restart odoo
-             
-             # Mettre à jour le module dans l'interface Odoo
-             # Applications → Mettre à jour la liste → Rechercher le module
-             ```
-          
-          4. **🧪 Tests post-déploiement:**
-             - Vérifier l'installation via l'interface Odoo
-             - Tester les fonctionnalités principales
-             - Vérifier les logs pour les erreurs
-          
-          ## 📧 SUPPORT
-          
-          En cas de problème:
-          1. Vérifier les logs Odoo: `sudo journalctl -u odoo -f`
-          2. Vérifier les permissions des fichiers
-          3. S'assurer que toutes les dépendances sont installées
-          
-          ---
-          
-          *Ce rapport a été généré automatiquement par GitHub Actions*
-          EOF
-          
-          echo "✅ Rapport final généré"
-          
-          # Afficher un résumé
-          echo ""
-          echo "🎉 RÉSUMÉ FINAL"
-          echo "=============="
-          echo "✅ Structure: VALIDE"
-          echo "✅ Syntaxe: VALIDE"
-          echo "✅ Tests: RÉUSSIS"
-          echo "✅ Docker: COMPATIBLE"
-          echo ""
-          echo "📦 Module prêt pour le déploiement!"
-
-      - name: "📤 Publier le rapport final"
-        uses: actions/upload-artifact@v4
-        with:
-          name: rapport-final
-          path: RAPPORT_FINAL.md
-
-      - name: "📧 Résumé d'exécution"
-        run: |
-          echo "::group::📊 RÉSUMÉ DU PIPELINE"
-          echo "🎉 PIPELINE DE TEST TERMINÉ AVEC SUCCÈS"
-          echo ""
-          echo "📋 MODULE: scraping_data_full"
-          echo "✅ ÉTAPE 1: Structure - COMPLETÉ"
-          echo "✅ ÉTAPE 2: Syntaxe - COMPLETÉ"
-          echo "✅ ÉTAPE 3: Tests - COMPLETÉ"
-          echo "✅ ÉTAPE 4: Docker - COMPLETÉ"
-          echo "✅ ÉTAPE 5: Rapport - COMPLETÉ"
-          echo ""
-          echo "📦 ARTEFACTS DISPONIBLES:"
-          echo "- etape-1-structure: Rapport de structure"
-          echo "- etape-2-syntaxe: Rapport syntaxique"
-          echo "- etape-3-tests: Résultats des tests"
-          echo "- etape-4-docker: Logs Docker"
-          echo "- rapport-final: Rapport final complet"
-          echo "::endgroup::"
