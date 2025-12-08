@@ -56,6 +56,8 @@ jobs:
       run: |
         echo "📦 INSTALLATION ODOO"
         echo "===================="
+        pip install --upgrade pip
+        pip install werkzeug==2.2.3
         pip install git+https://github.com/odoo/odoo.git@16.0
         pip install pytest requests beautifulsoup4 lxml[html_clean]
 
