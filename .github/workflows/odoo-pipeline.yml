@@ -57,7 +57,7 @@ jobs:
         echo "📦 INSTALLATION ODOO"
         echo "===================="
         pip install git+https://github.com/odoo/odoo.git@16.0
-        pip install pytest requests beautifulsoup4 lxml
+        pip install pytest requests beautifulsoup4 lxml[html_clean]
 
     - name: "🧪 Exécuter tests"
       run: |
