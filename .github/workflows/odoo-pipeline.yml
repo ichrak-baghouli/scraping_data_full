@@ -66,5 +66,6 @@ jobs:
             --db_user=odoo \
             --db_password=odoo \
             --addons-path="/usr/lib/python3/dist-packages/odoo/addons,${EXTRA_ADDONS}" \
-            -i "${MODULE_NAME}"
+            -i "${MODULE_NAME}" \
+            --test-tags "${MODULE_NAME}"
 
