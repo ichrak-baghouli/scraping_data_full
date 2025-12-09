@@ -1,218 +1,67 @@
-name: "TEST ODOO MODULE"
+name: CI
 
 on:
   push:
-    branches: [master, develop]
+    branches: [main, master]
   pull_request:
-    branches: [master]
-  workflow_dispatch:
 
 jobs:
-  structure:
-    name: "1. Structure"
+  test:
+    name: Odoo module tests
     runs-on: ubuntu-latest
-    
+    container: odoo:18.0
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: odoo
+          POSTGRES_PASSWORD: odoo
+          POSTGRES_DB: odoo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U odoo -d odoo"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     steps:
-    - name: "📥 Télécharger code"
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: "🔍 Vérifier module"
-      run: |
-        echo "🔍 VÉRIFICATION STRUCTURE"
-        echo "========================="
-        
-        if [ ! -f "__manifest__.py" ]; then
-          echo "❌ ERREUR: __manifest__.py manquant"
-          exit 1
-        fi
-        
-        echo "✅ Module Odoo détecté"
-        
-        echo ""
-        echo "📁 Structure:"
-        ls -la
-        
-        if [ -d "tests" ]; then
-          echo ""
-          echo "🧪 Tests trouvés:"
-          find tests -name "*.py"
-        fi
+      - name: Install OS dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            python3-pip tesseract-ocr libtesseract-dev
 
-  tests:
-    name: "2. Tests unitaires"
-    runs-on: ubuntu-latest
-    needs: structure
-    
-    steps:
-    - name: "📥 Télécharger code"
-      uses: actions/checkout@v4
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install requests beautifulsoup4 pytesseract pillow rapidfuzz
 
-    - name: "🐍 Installer Python"
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Prepare module path
+        run: |
+          export EXTRA_ADDONS=/mnt/extra-addons
+          mkdir -p "${EXTRA_ADDONS}"
+          MODULE_NAME=$(basename "$GITHUB_WORKSPACE")
+          cp -R "$GITHUB_WORKSPACE" "${EXTRA_ADDONS}/${MODULE_NAME}"
+          echo "MODULE_NAME=${MODULE_NAME}" >> $GITHUB_ENV
+          echo "EXTRA_ADDONS=${EXTRA_ADDONS}" >> $GITHUB_ENV
 
-    - name: "📦 Installer Odoo et dépendances"
-      run: |
-        echo "📦 INSTALLATION ODOO"
-        echo "===================="
-        pip install --upgrade pip
-        pip install werkzeug==2.2.3
-        pip install git+https://github.com/odoo/odoo.git@16.0
-        pip install pytest requests beautifulsoup4 lxml[html_clean]
-        pip install pytest-mock
+      - name: Run Odoo tests
+        env:
+          PGHOST: postgres
+          PGUSER: odoo
+          PGPASSWORD: odoo
+          PGDATABASE: odoo
+        run: |
+          odoo --test-enable --stop-after-init \
+            -d odoo \
+            --db_host=postgres \
+            --db_port=5432 \
+            --db_user=odoo \
+            --db_password=odoo \
+            --addons-path="/usr/lib/python3/dist-packages/odoo/addons,${EXTRA_ADDONS}" \
+            -i "${MODULE_NAME}"
 
-    - name: "🔧 Configurer l'environnement Odoo"
-      run: |
-        echo "🔧 CONFIGURATION ENVIRONNEMENT ODOO"
-        echo "==================================="
-        
-        # Créer la structure de module Odoo attendue
-        mkdir -p /tmp/odoo/addons
-        
-        # Copier le module dans la structure Odoo
-        cp -r . /tmp/odoo/addons/scraping_data_full
-        
-        # Créer un fichier de configuration pour bypasser l'assertion
-        cat > /tmp/odoo-config.py << 'EOF'
-        import sys
-        import os
-        
-        # Rediriger les imports odoo.addons vers notre structure
-        class OdooAddonsFinder:
-            def find_module(self, fullname, path=None):
-                if fullname.startswith('odoo.addons.'):
-                    return self
-            
-            def load_module(self, fullname):
-                # Extraire le nom du module
-                module_name = fullname.split('.')[-1]
-                
-                if module_name == 'scraping_data_full':
-                    # Ajouter le chemin au sys.path
-                    module_path = '/tmp/odoo/addons/scraping_data_full'
-                    if module_path not in sys.path:
-                        sys.path.insert(0, module_path)
-                    
-                    # Importer le module réel
-                    import importlib.util
-                    spec = importlib.util.spec_from_file_location(
-                        'scraping_data_full',
-                        os.path.join(module_path, '__init__.py')
-                    )
-                    module = importlib.util.module_from_spec(spec)
-                    sys.modules[fullname] = module
-                    spec.loader.exec_module(module)
-                    return module
-                
-                # Pour les autres modules, créer un module vide
-                import types
-                module = types.ModuleType(fullname)
-                sys.modules[fullname] = module
-                return module
-        
-        # Installer le finder
-        sys.meta_path.insert(0, OdooAddonsFinder())
-        print("✅ Finder Odoo installé")
-        EOF
-
-    - name: "🧪 Exécuter les tests"
-      run: |
-        echo "🧪 EXÉCUTION TESTS"
-        echo "=================="
-        
-        if [ -d "tests" ]; then
-          echo "📂 Dossier tests trouvé"
-          
-          # Aller dans le dossier du module Odoo
-          cd /tmp/odoo/addons/scraping_data_full/tests
-          
-          # Exécuter les tests avec la configuration Odoo
-          PYTHONPATH="/tmp/odoo/addons/scraping_data_full:/tmp:$PYTHONPATH" \
-          python -c "
-          import sys
-          sys.path.insert(0, '/tmp')
-          import odoo-config
-          import pytest
-          exit(pytest.main(['-v', '.']))
-          " 2>&1 | tee /tmp/test_results.log
-          
-          # Copier les résultats
-          cp /tmp/test_results.log /home/runner/work/scraping_data_full/scraping_data_full/test_results.log
-        else
-          echo "❌ Dossier tests non trouvé"
-          exit 1
-        fi
-        
-        # Analyser les résultats
-        if grep -q "FAILED\|ERROR" /tmp/test_results.log; then
-          echo "❌ Tests échoués"
-          echo "--- Dernières erreurs ---"
-          tail -50 /tmp/test_results.log
-          exit 1
-        else
-          echo "✅ Tests réussis"
-          echo "--- Résumé ---"
-          grep -E "passed|failed|error" /tmp/test_results.log | tail -20
-        fi
-
-    - name: "💾 Sauvegarder résultats"
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: resultats-tests
-        path: test_results.log
-
-  rapport:
-    name: "3. Rapport"
-    runs-on: ubuntu-latest
-    needs: [structure, tests]
-    
-    steps:
-    - name: "📥 Télécharger code"
-      uses: actions/checkout@v4
-
-    - name: "📥 Télécharger résultats"
-      uses: actions/download-artifact@v4
-      with:
-        name: resultats-tests
-
-    - name: "📊 Générer rapport"
-      run: |
-        echo "📊 RAPPORT FINAL"
-        echo "================"
-        echo ""
-        
-        if [ -f "test_results.log" ]; then
-          echo "## 📈 Résultats des tests"
-          echo ""
-          
-          # Compter les tests
-          TOTAL_TESTS=$(grep -c "PASSED\|FAILED\|ERROR" test_results.log || echo "0")
-          PASSED_TESTS=$(grep -c "PASSED" test_results.log || echo "0")
-          FAILED_TESTS=$(grep -c "FAILED\|ERROR" test_results.log || echo "0")
-          
-          echo "- **Total tests:** $TOTAL_TESTS"
-          echo "- **Tests réussis:** $PASSED_TESTS"
-          echo "- **Tests échoués:** $FAILED_TESTS"
-          echo ""
-          
-          if [ "$FAILED_TESTS" -gt 0 ]; then
-            echo "## ❌ Erreurs détectées"
-            echo ""
-            grep -A 5 -B 5 "FAILED\|ERROR" test_results.log | head -50
-          else
-            echo "## ✅ Tous les tests ont réussi"
-            echo ""
-            echo "Félicitations ! Le module est fonctionnel."
-          fi
-          
-          echo ""
-          echo "## 📋 Log complet"
-          echo ""
-          echo '```'
-          tail -100 test_results.log
-          echo '```'
-        else
-          echo "⚠️ Aucun résultat de test trouvé"
-        fi
