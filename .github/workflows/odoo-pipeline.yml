@@ -18,7 +18,14 @@ jobs:
       - name: Style check (basic)
         run: |
           python3 -m pip install --break-system-packages --no-cache-dir ruff
-          ruff check .
+          ruff check . | tee ruff_report.txt
+
+      - name: Upload quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report
+          path: ruff_report.txt
 
   build:
     name: Build package
@@ -42,6 +49,13 @@ jobs:
           name: odoo-addon
           path: "${{ env.ARTIFACT }}"
           retention-days: 7
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: "${{ runner.temp }}"
 
   test:
     name: Odoo module tests
@@ -105,7 +119,14 @@ jobs:
             --db_password=odoo \
             --addons-path="/usr/lib/python3/dist-packages/odoo/addons,${EXTRA_ADDONS}" \
             -i "${MODULE_NAME}" \
-            --test-tags "${MODULE_NAME}"
+            --test-tags "${MODULE_NAME}" | tee /tmp/odoo_test.log
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: /tmp/odoo_test.log
 
   deploy:
     name: Deploy (Docker image)
@@ -138,7 +159,14 @@ jobs:
           IMAGE: ${{ steps.vars.outputs.image }}
           TAG: ${{ steps.vars.outputs.tag }}
         run: |
-          docker build -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
-          docker push "${IMAGE}:${TAG}"
-          docker push "${IMAGE}:latest"
+          docker build -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" . | tee /tmp/deploy.log
+          docker push "${IMAGE}:${TAG}" | tee -a /tmp/deploy.log
+          docker push "${IMAGE}:latest" | tee -a /tmp/deploy.log
+
+      - name: Upload deploy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-report
+          path: /tmp/deploy.log
 
