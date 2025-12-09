@@ -1,6 +1,6 @@
 from odoo.exceptions import UserError
 
-from odoo import models, fields, api
+from odoo import models, fields
 
 
 class ScraperContact(models.Model):
