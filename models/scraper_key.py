@@ -137,7 +137,7 @@ class ScraperContact(models.Model):
             img = Image.open(BytesIO(resp.content))
             email = pytesseract.image_to_string(img, config='--psm 7').strip()
             return self.clean_email(email)
-        except:
+        except Exception:
             return ""
 
     @api.model
@@ -364,7 +364,7 @@ class ScraperContact(models.Model):
             if kw in category_name.lower():
                 try:
                     sub_urls = self.get_all_subcategory_links(cat_url)
-                except:
+                except Exception:
                     sub_urls = [cat_url]
 
                 for sub_url in sub_urls:
@@ -517,7 +517,7 @@ class ScraperContact(models.Model):
             category_name = self.extract_category_from_url(cat_url)
             try:
                 sub_urls = self.get_all_subcategory_links(cat_url)
-            except:
+            except Exception:
                 sub_urls = [cat_url]
 
             for sub_url in sub_urls:
