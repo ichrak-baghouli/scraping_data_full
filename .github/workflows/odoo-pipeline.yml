@@ -4,11 +4,46 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  workflow_dispatch:
 
 jobs:
+  quality:
+    name: Quality (lint basic)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Style check (basic)
+        run: |
+          python3 -m pip install --break-system-packages --no-cache-dir ruff
+          ruff check .
+
+  build:
+    name: Build package
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create addon archive
+        run: |
+          MODULE_NAME=$(basename "$GITHUB_WORKSPACE")
+          cd ..
+          tar -czf "${MODULE_NAME}.tar.gz" "${MODULE_NAME}"
+          echo "ARTIFACT=${MODULE_NAME}.tar.gz" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: odoo-addon
+          path: "${{ env.ARTIFACT }}"
+
   test:
     name: Odoo module tests
     runs-on: ubuntu-latest
+    needs: build
     container:
       image: odoo:18.0
       # Run as root so checkout can write to the mounted workspace.
@@ -68,4 +103,24 @@ jobs:
             --addons-path="/usr/lib/python3/dist-packages/odoo/addons,${EXTRA_ADDONS}" \
             -i "${MODULE_NAME}" \
             --test-tags "${MODULE_NAME}"
+
+  deploy:
+    name: Deploy (placeholder)
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: odoo-addon
+          path: dist
+
+      - name: Deploy step
+        run: |
+          echo "Deploy placeholder: copy dist/*.tar.gz to target"
+          ls -l dist
 
