@@ -31,12 +31,9 @@ jobs:
       - name: Create addon archive
         run: |
           MODULE_NAME=$(basename "$GITHUB_WORKSPACE")
-          tar -czf "${MODULE_NAME}.tar.gz" \
-            --exclude=".git" \
-            --exclude=".github" \
-            --exclude="dist" \
-            --exclude="__pycache__" \
-            .
+          TMP_DIR=$(mktemp -d)
+          rsync -a --exclude=".git" --exclude=".github" --exclude="dist" --exclude="__pycache__" ./ "${TMP_DIR}/"
+          tar -czf "${MODULE_NAME}.tar.gz" -C "${TMP_DIR}" .
           echo "ARTIFACT=${MODULE_NAME}.tar.gz" >> $GITHUB_ENV
 
       - name: Upload artifact
