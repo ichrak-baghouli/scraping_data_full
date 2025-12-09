@@ -9,7 +9,10 @@ jobs:
   test:
     name: Odoo module tests
     runs-on: ubuntu-latest
-    container: odoo:18.0
+    container:
+      image: odoo:18.0
+      # Run as root so checkout can write to the mounted workspace.
+      options: --user 0
     services:
       postgres:
         image: postgres:16
