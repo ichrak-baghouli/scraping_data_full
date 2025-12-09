@@ -119,7 +119,7 @@ jobs:
             --db_password=odoo \
             --addons-path="/usr/lib/python3/dist-packages/odoo/addons,${EXTRA_ADDONS}" \
             -i "${MODULE_NAME}" \
-            --test-tags "${MODULE_NAME}" | tee /tmp/odoo_test.log
+            --test-tags "${MODULE_NAME}" 2>&1 | tee /tmp/odoo_test.log
 
       - name: Upload test report
         if: always()
@@ -169,4 +169,3 @@ jobs:
         with:
           name: deploy-report
           path: /tmp/deploy.log
-
