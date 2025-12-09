@@ -5,7 +5,7 @@ on:
     branches: [main, master]
   pull_request:
   workflow_dispatch:
-  # Deployment condition uses tags (refs/tags/v*)
+  # Deployment condition uses tags .(refs/tags/v*)
 
 jobs:
   quality:
