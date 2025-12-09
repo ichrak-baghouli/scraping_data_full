@@ -40,8 +40,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install --break-system-packages \
+          python3 -m pip install --break-system-packages --no-cache-dir \
             requests beautifulsoup4 pytesseract pillow rapidfuzz
 
       - name: Prepare module path
