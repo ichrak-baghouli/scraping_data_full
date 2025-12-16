@@ -169,3 +169,51 @@ jobs:
         with:
           name: deploy-report
           path: /tmp/deploy.log
+
+## docker run
+  run-docker:
+    name: Run Docker Image and Check Logs
+    runs-on: ubuntu-latest
+    needs: deploy   # s'exécute après le deploy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker image
+        run: |
+          IMAGE=ghcr.io/${{ github.repository }}:${GITHUB_REF_NAME}
+          docker pull $IMAGE
+
+      - name: Run Docker container
+        run: |
+          IMAGE=ghcr.io/${{ github.repository }}:${GITHUB_REF_NAME}
+          docker run -d --name odoo_test $IMAGE
+          # attendre quelques secondes que Odoo démarre
+          sleep 15
+
+      - name: Show Docker logs
+        run: |
+          docker logs odoo_test 2>&1 | tee /tmp/odoo_run_logs.txt
+
+      - name: Upload Docker run logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: odoo-run-logs
+          path: /tmp/odoo_run_logs.txt
+
+      - name: Stop Docker container
+        run: |
+          docker stop odoo_test
+          docker rm odoo_test
+
+
+
+
+
