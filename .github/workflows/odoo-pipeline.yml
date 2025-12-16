@@ -196,7 +196,7 @@ jobs:
           IMAGE=ghcr.io/${{ github.repository }}:${GITHUB_REF_NAME}
           docker run -d --name odoo_test $IMAGE
           # attendre quelques secondes que Odoo démarre
-          sleep 15
+          sleep 30
 
       - name: Show Docker logs
         run: |
